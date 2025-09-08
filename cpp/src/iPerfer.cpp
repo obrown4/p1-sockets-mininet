@@ -3,6 +3,10 @@
 #include <optional>
 #include <spdlog/spdlog.h>
 
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <sys/types.h>
+
 struct Server {
   int port;
 };
@@ -13,7 +17,62 @@ struct Client {
   std::chrono::duration<double> time;
 };
 
-void serverMode(Server &s) {}
+void handleConnection(int clientfd) {
+  constexpr size_t BUFFER_SIZE = 65536;
+  char buffer[BUFFER_SIZE];
+
+  int bytes_recv = recv(clientfd, buffer, BUFFER_SIZE, 0);
+  if (bytes_recv < 0) {
+    spdlog::error("Error: failed to receive data from client");
+    close(clientfd);
+    return;
+  }
+
+  spdlog::info("Received %zd bytes from client", bytes_recv);
+
+  close(clientfd);
+}
+
+int serverMode(Server &server) {
+  // Prepare address structure
+  sockaddr_in server_addr{};
+  server_addr.sin_family = AF_INET;
+  server_addr.sin_addr.s_addr = INADDR_ANY;
+  server_addr.sin_port = htons(server.port);
+
+  // Create socket
+  int sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_TCP);
+  if (sockfd < 0) {
+    spdlog::error("Error: failed to create socket");
+    return 1;
+  }
+
+  // bind socket
+  if (bind(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+    spdlog::error("Error: failed to bind socket to port %d", server.port);
+    close(sockfd);
+    return 1;
+  }
+
+  spdlog::info("iPerfer server started");
+  spdlog::info("Listening on port %d", server.port);
+
+  if (listen(sockfd, 5)) {
+    spdlog::error("Error: failed to listen on socket");
+    close(sockfd);
+    return 1;
+  }
+
+  // accept incoming connections
+  while (true) {
+    int clientfd = accept(sockfd, nullptr, nullptr);
+    if (clientfd < 0) {
+      spdlog::error("Error: failed to accept incoming connection");
+      continue;
+    }
+    handleConnection(clientfd);
+  }
+}
 
 std::optional<Server> getServerOptions(cxxopts::ParseResult &opts) {
   Server s;
@@ -85,7 +144,9 @@ int main(int argc, char *argv[]) {
     if (!s) {
       return 1;
     }
-    serverMode(*s);
+    if (serverMode(*s)) {
+      return 1;
+    }
   } else {
     auto c = getClientOptions(result);
     if (!c) {
