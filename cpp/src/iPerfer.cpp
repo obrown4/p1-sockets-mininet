@@ -2,93 +2,19 @@
 #include <cxxopts.hpp>
 #include <optional>
 #include <spdlog/spdlog.h>
+#include <string>
 
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 
-struct Server {
-  int port;
-};
+#include "server/server.h"
 
 struct Client {
   std::string hostname;
   int port;
   std::chrono::duration<double> time;
 };
-
-void handleConnection(int clientfd) {
-  constexpr size_t BUFFER_SIZE = 65536;
-  char buffer[BUFFER_SIZE];
-
-  int bytes_recv = recv(clientfd, buffer, BUFFER_SIZE, 0);
-  if (bytes_recv < 0) {
-    spdlog::error("Error: failed to receive data from client");
-    close(clientfd);
-    return;
-  }
-
-  spdlog::info("Received %zd bytes from client", bytes_recv);
-
-  close(clientfd);
-}
-
-int serverMode(Server &server) {
-  // Prepare address structure
-  sockaddr_in server_addr{};
-  server_addr.sin_family = AF_INET;
-  server_addr.sin_addr.s_addr = INADDR_ANY;
-  server_addr.sin_port = htons(server.port);
-
-  // Create socket
-  int sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_TCP);
-  if (sockfd < 0) {
-    spdlog::error("Error: failed to create socket");
-    return 1;
-  }
-
-  // bind socket
-  if (bind(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-    spdlog::error("Error: failed to bind socket to port %d", server.port);
-    close(sockfd);
-    return 1;
-  }
-
-  spdlog::info("iPerfer server started");
-  spdlog::info("Listening on port %d", server.port);
-
-  if (listen(sockfd, 5)) {
-    spdlog::error("Error: failed to listen on socket");
-    close(sockfd);
-    return 1;
-  }
-
-  // accept incoming connections
-  while (true) {
-    int clientfd = accept(sockfd, nullptr, nullptr);
-    if (clientfd < 0) {
-      spdlog::error("Error: failed to accept incoming connection");
-      continue;
-    }
-    handleConnection(clientfd);
-  }
-}
-
-std::optional<Server> getServerOptions(cxxopts::ParseResult &opts) {
-  Server s;
-  if (!opts.contains("p")) {
-    spdlog::error("Error: server mode requires a port number (-p)");
-    return std::nullopt;
-  }
-  s.port = opts["p"].as<int>();
-
-  if (s.port < 1024 || s.port > 65535) {
-    spdlog::error("Error: port number must be in the range of [1024, 65535]");
-    return std::nullopt;
-  }
-
-  return s;
-}
 
 std::optional<Client> getClientOptions(cxxopts::ParseResult &opts) {
   Client c;
@@ -140,11 +66,11 @@ int main(int argc, char *argv[]) {
   }
 
   if (isServer) {
-    auto s = getServerOptions(result);
+    auto s = get_server_options(result);
     if (!s) {
       return 1;
     }
-    if (serverMode(*s)) {
+    if (start_server(*s)) {
       return 1;
     }
   } else {
