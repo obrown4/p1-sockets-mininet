@@ -1,4 +1,4 @@
-add_executable(iPerfer iPerfer.cpp server/server.cpp)
+add_executable(iPerfer iPerfer.cpp server/server.cpp client/client.cpp)
 # Add your setup code above this line, then uncomment the line below
 
 target_link_libraries(iPerfer spdlog::spdlog cxxopts::cxxopts)

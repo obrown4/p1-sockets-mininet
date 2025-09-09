@@ -10,6 +10,7 @@
 #include <sys/types.h>
 #include <time.h>
 
+#include "../perf.h"
 #include "server.h"
 
 int MAX_MSG_SIZE = 1024 * 80; // 80KB
@@ -43,7 +44,7 @@ int measure_rtt(int clientfd) {
   return static_cast<int>(avg * 1000); // in ms
 }
 
-double measure_bandwidth(Perf &p, int clientfd) {
+double measure_bandwidth(Perf &perf, int clientfd) {
   clock_t start, end;
   int total_bytes = 0;
   char buffer[MAX_MSG_SIZE];
@@ -58,11 +59,11 @@ double measure_bandwidth(Perf &p, int clientfd) {
     send(clientfd, &ACK_MSG, 1, 0);
   }
   end = clock();
-  p.kbytes_recvd = total_bytes / 1000;
+  perf.kbytes = total_bytes / 1000;
 
   // convert to Mb and sec -> Mbps
   int mb_recvd = total_bytes / (1000 * 1000);
-  int rtt_in_sec = p.rtt / 1000;
+  int rtt_in_sec = perf.rtt / 1000;
 
   double total_time = double(end - start) / CLOCKS_PER_SEC; // in ms
   double transmission_delay = total_time - rtt_in_sec;
@@ -72,39 +73,44 @@ double measure_bandwidth(Perf &p, int clientfd) {
 }
 
 void handle_connection(int clientfd) {
-  Perf p{};
-  p.rtt = measure_rtt(clientfd);
-  if (p.rtt == 0) {
+  Perf perf{};
+  perf.rtt = measure_rtt(clientfd);
+  if (perf.rtt == 0) {
     spdlog::error("Error: failed to measure RTT");
     return;
   }
 
-  p.rate = measure_bandwidth(p, clientfd);
-  assert(p.rate >= 0);
+  perf.rate = measure_bandwidth(perf, clientfd);
+  assert(perf.rate >= 0);
 
-  spdlog::info("Received=%d KB, Rate=%.3f Mbps, RTT=%dms", p.kbytes_recvd,
-               p.rate, p.rtt);
+  spdlog::info("Received=%d KB, Rate=%.3f Mbps, RTT=%dms", perf.kbytes,
+               perf.rate, perf.rtt);
+}
+
+int make_server_sockaddr(sockaddr_in &addr, int port) {
+  addr.sin_family = AF_INET;
+  addr.sin_addr.s_addr = INADDR_ANY;
+  addr.sin_port = htons(port);
+  return 0;
 }
 
 int start_server(Server &server) {
   // Prepare address structure
-  sockaddr_in server_addr{};
-  server_addr.sin_family = AF_INET;
-  server_addr.sin_addr.s_addr = INADDR_ANY;
-  server_addr.sin_port = htons(server.port);
+  sockaddr_in addr{};
+  make_server_sockaddr(addr, server.port);
 
   // Create socket
   int sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_TCP);
   if (sockfd < 0) {
     spdlog::error("Error: failed to create socket");
-    return 1;
+    return -1;
   }
 
   // bind socket
-  if (bind(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+  if (bind(sockfd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
     spdlog::error("Error: failed to bind socket to port %d", server.port);
     close(sockfd);
-    return 1;
+    return -1;
   }
 
   spdlog::info("iPerfer server started");
@@ -113,7 +119,7 @@ int start_server(Server &server) {
   if (listen(sockfd, 5)) {
     spdlog::error("Error: failed to listen on socket");
     close(sockfd);
-    return 1;
+    return -1;
   }
 
   // accept incoming connections

@@ -1,4 +1,3 @@
-#include <chrono>
 #include <cxxopts.hpp>
 #include <optional>
 #include <spdlog/spdlog.h>
@@ -8,39 +7,8 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
+#include "client/client.h"
 #include "server/server.h"
-
-struct Client {
-  std::string hostname;
-  int port;
-  std::chrono::duration<double> time;
-};
-
-std::optional<Client> getClientOptions(cxxopts::ParseResult &opts) {
-  Client c;
-  if (!opts.contains("p") || !opts.contains("h") || !opts.contains("t")) {
-    spdlog::error("Error: client mode requires a port number (-p), hostname "
-                  "(-h), and time (-t)");
-    return std::nullopt;
-  }
-  c.port = opts["p"].as<int>();
-  c.hostname = opts["h"].as<std::string>();
-  c.time = opts["t"].as<std::chrono::duration<double>>();
-
-  if (c.port < 1024 || c.port > 65535) {
-    spdlog::error("Error: port number must be in the range of [1024, 65535]");
-    return std::nullopt;
-  }
-
-  if (c.time.count() <= 0) {
-    spdlog::error("Error: time argument must be greater than 0");
-    return std::nullopt;
-  }
-
-  return c;
-}
-
-void clientMode(Client &c) {}
 
 int main(int argc, char *argv[]) {
   spdlog::info("Starting iPerfer...");
@@ -70,15 +38,17 @@ int main(int argc, char *argv[]) {
     if (!s) {
       return 1;
     }
-    if (start_server(*s)) {
+    if (start_server(*s) == 1) {
       return 1;
     }
   } else {
-    auto c = getClientOptions(result);
+    auto c = get_client_options(result);
     if (!c) {
       return 1;
     }
-    clientMode(*c);
+    if (start_client(*c) == 1) {
+      return 1;
+    }
   }
 
   return 0;
