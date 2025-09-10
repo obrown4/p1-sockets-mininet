@@ -43,8 +43,8 @@ int Server::measure_rtt(int clientfd) {
 
 double Server::measure_bandwidth(Perf &perf, int clientfd) {
   clock_t start, end;
-  int total_bytes = 0;
-  int bytes_recvd;
+  size_t total_bytes = 0;
+  size_t bytes_recvd;
   char buffer[MAX_MSG_SIZE];
 
   start = clock();
@@ -56,11 +56,19 @@ double Server::measure_bandwidth(Perf &perf, int clientfd) {
   perf.kbytes = total_bytes / 1000;
 
   // convert to Mb and sec -> Mbps
-  int mb_recvd = total_bytes / (1000 * 1000);
+  double mb_recvd = static_cast<double>(total_bytes) * 8 / (1000 * 1000);
+  assert(mb_recvd > 0);
+
   int rtt_in_sec = perf.rtt / 1000;
 
   double total_time = double(end - start) / CLOCKS_PER_SEC; // in ms
+  assert(total_time > 0);
+
   double transmission_delay = total_time - rtt_in_sec;
+
+  spdlog::debug(
+      "Mb Recvd: {}, Total Time: {}s, RTT: {}s, Transmission Delay: {}s",
+      mb_recvd, total_time, rtt_in_sec, transmission_delay);
 
   double bandwidth = mb_recvd / transmission_delay; // in Mbps
   return bandwidth;

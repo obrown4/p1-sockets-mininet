@@ -43,13 +43,19 @@ int Client::measure_rtt(int clientfd) {
 }
 
 double Client::measure_bandwidth(Perf &perf, Opts &opts, int clientfd) {
-  int bytes_sent = 0;
+  size_t bytes_sent = 0;
   char buffer[MAX_MSG_SIZE];
   std::string LARGE_MSG(MAX_MSG_SIZE, '\0');
 
   clock_t start = clock();
   while (double(clock() - start) / CLOCKS_PER_SEC < opts.time.count()) {
-    bytes_sent += send(clientfd, LARGE_MSG.c_str(), MAX_MSG_SIZE, 0);
+    int sent = send(clientfd, LARGE_MSG.c_str(), MAX_MSG_SIZE, 0);
+    if (sent < 0) {
+      spdlog::error("Error: failed to send data to server");
+      return -1;
+    }
+    bytes_sent += sent;
+
     int bytes_recvd = recv(clientfd, buffer, MAX_MSG_SIZE, 0);
     if (bytes_recvd < 0) {
       spdlog::error("Error: failed to receive data from server");
@@ -57,10 +63,12 @@ double Client::measure_bandwidth(Perf &perf, Opts &opts, int clientfd) {
     }
   }
 
+  assert(bytes_sent > 0);
   perf.kbytes = bytes_sent / 1000;
+  assert(perf.kbytes > 0);
 
   // convert to Mb and sec -> Mbps
-  int mb_sent = bytes_sent / (1000 * 1000);
+  double mb_sent = static_cast<double>(bytes_sent) * 8 / (1000 * 1000);
   int rtt_in_sec = perf.rtt / 1000;
 
   double transmission_delay = opts.time.count() - rtt_in_sec;

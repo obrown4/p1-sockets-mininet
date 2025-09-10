@@ -27,8 +27,8 @@ class AssignmentNetworks(Topo):
 
         # This specifies the links between switches, with additional
         # information for the bandwidth and delay specified
-        self.addLink(s1, s2, bw=20, delay='40ms')
-        self.addLink(s2, s3, bw=40, delay='10ms')
+        self.addLink(s1, s2, bw=20, delay='100ms')
+        self.addLink(s2, s3, bw=40, delay='100ms')
         self.addLink(s3, s4, bw=30, delay='30ms')
         self.addLink(s4, s5, bw=25, delay='5ms')
         self.addLink(s5, s1, bw=25, delay='5ms')
