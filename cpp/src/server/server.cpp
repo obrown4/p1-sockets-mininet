@@ -29,7 +29,7 @@ int Server::measure_rtt(int clientfd) {
     // assert(bytes_recvd == 1);
 
     double rtt = double(end - start) / CLOCKS_PER_SEC;
-    spdlog::debug("RTT{} = {}", i, rtt * 1000);
+    spdlog::debug("RTT{} = {}ms", i, rtt * 1000);
     rtts.push_back(rtt * 1000);
     send(clientfd, &ACK_MSG, sizeof(ACK_MSG), 0);
   }
@@ -44,12 +44,13 @@ int Server::measure_rtt(int clientfd) {
 double Server::measure_bandwidth(Perf &perf, int clientfd) {
   clock_t start, end;
   int total_bytes = 0;
+  int bytes_recvd;
   char buffer[MAX_MSG_SIZE];
 
   start = clock();
-  while (int bytes_recvd = recv(clientfd, buffer, MAX_MSG_SIZE, 0) > 0) {
+  while ((bytes_recvd = recv(clientfd, buffer, MAX_MSG_SIZE, 0)) > 0) {
     total_bytes += bytes_recvd;
-    send(clientfd, &ACK_MSG, 1, 0);
+    send(clientfd, &ACK_MSG, sizeof(ACK_MSG), 0);
   }
   end = clock();
   perf.kbytes = total_bytes / 1000;
@@ -68,7 +69,7 @@ double Server::measure_bandwidth(Perf &perf, int clientfd) {
 void Server::handle_connection(int clientfd) {
   Perf perf{};
   perf.rtt = Server::measure_rtt(clientfd);
-  spdlog::debug("Measured RTT = {}", perf.rtt);
+  spdlog::debug("Measured RTT = {}ms", perf.rtt);
   if (perf.rtt < 0) {
     spdlog::error("Error: failed to measure RTT");
     return;
