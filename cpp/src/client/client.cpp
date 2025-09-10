@@ -119,6 +119,9 @@ int Client::start_client(Opts &opts) {
     return -1;
   }
 
+  spdlog::info("Sent=%d KB, Rate=%.3f Mbps, RTT=%dms", perf.kbytes, perf.rate,
+               perf.rtt);
+
   close(sockfd);
   return 0;
 }

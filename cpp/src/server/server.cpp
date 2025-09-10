@@ -110,7 +110,7 @@ int Server::start_server(Opts &opts) {
   }
 
   spdlog::info("iPerfer server started");
-  spdlog::info("Listening on port %d", opts.port);
+  spdlog::debug("Listening on port %d", opts.port);
 
   if (listen(sockfd, 5)) {
     spdlog::error("Error: failed to listen on socket");
