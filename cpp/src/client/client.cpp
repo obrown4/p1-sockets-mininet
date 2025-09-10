@@ -68,7 +68,7 @@ double Client::measure_bandwidth(Perf &perf, Opts &opts, int clientfd) {
   assert(perf.kbytes > 0);
 
   // convert to Mb and sec -> Mbps
-  double mb_sent = static_cast<double>(bytes_sent) * 8 / (1000 * 1000);
+  double mb_sent = static_cast<double>(bytes_sent) / (1000 * 1000);
   int rtt_in_sec = perf.rtt / 1000;
 
   double transmission_delay = opts.time.count() - rtt_in_sec;
@@ -111,7 +111,7 @@ int Client::start_client(Opts &opts) {
     return -1;
   }
 
-  spdlog::info("Connected to server {}:{}", opts.hostname, opts.port);
+  spdlog::debug("Connected to server {}:{}", opts.hostname, opts.port);
 
   Perf perf{};
   perf.rtt = measure_rtt(sockfd);

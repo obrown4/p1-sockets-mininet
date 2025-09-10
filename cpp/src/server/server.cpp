@@ -1,3 +1,4 @@
+#include <cstddef>
 #include <cxxopts.hpp>
 #include <numeric>
 #include <optional>
@@ -44,7 +45,7 @@ int Server::measure_rtt(int clientfd) {
 double Server::measure_bandwidth(Perf &perf, int clientfd) {
   clock_t start, end;
   size_t total_bytes = 0;
-  size_t bytes_recvd;
+  int bytes_recvd;
   char buffer[MAX_MSG_SIZE];
 
   start = clock();
@@ -56,7 +57,7 @@ double Server::measure_bandwidth(Perf &perf, int clientfd) {
   perf.kbytes = total_bytes / 1000;
 
   // convert to Mb and sec -> Mbps
-  double mb_recvd = static_cast<double>(total_bytes) * 8 / (1000 * 1000);
+  double mb_recvd = total_bytes / (1000 * 1000);
   assert(mb_recvd > 0);
 
   int rtt_in_sec = perf.rtt / 1000;
@@ -102,7 +103,7 @@ int Server::start_server(Opts &opts) {
   sockaddr_in addr{};
   make_server_sockaddr(&addr, opts.port);
 
-  spdlog::info("Binding to port {}", opts.port);
+  spdlog::debug("Binding to port {}", opts.port);
 
   // Create socket
   int sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);

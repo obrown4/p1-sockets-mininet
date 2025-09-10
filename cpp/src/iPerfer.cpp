@@ -11,8 +11,6 @@
 #include "server/server.h"
 
 int main(int argc, char *argv[]) {
-  spdlog::info("Starting iPerfer...");
-
   cxxopts::Options options("iPerfer",
                            "Tool to estimate throughput between hosts");
   options.add_options()("s,server", "Run in server mode")(
