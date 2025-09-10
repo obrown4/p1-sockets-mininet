@@ -12,6 +12,7 @@
 
 int main(int argc, char *argv[]) {
   spdlog::info("Starting iPerfer...");
+
   cxxopts::Options options("iPerfer",
                            "Tool to estimate throughput between hosts");
   options.add_options()("s,server", "Run in server mode")(
@@ -20,7 +21,7 @@ int main(int argc, char *argv[]) {
       "h, hostname", "Hostname or IP address of the server",
       cxxopts::value<std::string>())(
       "t,time", "Time in seconds to transmit for (client mode)",
-      cxxopts::value<double>());
+      cxxopts::value<double>())("d, debug", "Debug mode");
 
   auto result = options.parse(argc, argv);
 
@@ -31,6 +32,10 @@ int main(int argc, char *argv[]) {
     spdlog::error("Error: specify either server mode (-s) or client mode (-c)");
     spdlog::info(options.help());
     return 1;
+  }
+
+  if (result.contains("d")) {
+    spdlog::set_level(spdlog::level::debug);
   }
 
   if (isServer) {

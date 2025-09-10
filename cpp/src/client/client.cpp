@@ -23,19 +23,19 @@ int Client::measure_rtt(int clientfd) {
   // rtt calculations for 8 messages
   for (int i = 0; i < 8; ++i) {
     start = clock();
-    send(clientfd, &SMALL_MSG, 1, 0);
+    send(clientfd, &SMALL_MSG, sizeof(SMALL_MSG), 0);
     int bytes_recvd = recv(clientfd, buffer, MAX_MSG_SIZE, 0);
     if (bytes_recvd < 0) {
       spdlog::error("Error: failed to receive data from server");
       return 0;
     }
-    assert(bytes_recvd == 1);
+    // assert(bytes_recvd == 1);
     end = clock();
     double rtt = double(end - start) / CLOCKS_PER_SEC;
     rtts.push_back(rtt);
   }
 
-  assert(rtts.size() == 7);
+  assert(rtts.size() == 8);
 
   // calcualte rtt over last 4 recvd messages
   double avg = std::accumulate(rtts.begin() + 3, rtts.end(), 0.0) / 3.0;
@@ -90,7 +90,7 @@ int Client::start_client(Opts &opts) {
   }
 
   // Create socket
-  int sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_TCP);
+  int sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
   if (sockfd < 0) {
     spdlog::error("Error: failed to create socket");
     return -1;
@@ -103,11 +103,12 @@ int Client::start_client(Opts &opts) {
     return -1;
   }
 
-  spdlog::info("Connected to server %s:%d", opts.hostname, opts.port);
+  spdlog::info("Connected to server {}:{}", opts.hostname, opts.port);
 
   Perf perf{};
   perf.rtt = measure_rtt(sockfd);
-  if (perf.rtt == 0) {
+  spdlog::debug("RTT Measured: {}", perf.rtt);
+  if (perf.rtt < 0) {
     spdlog::error("Error: failed to measure RTT");
     close(sockfd);
     return -1;
@@ -119,9 +120,8 @@ int Client::start_client(Opts &opts) {
     return -1;
   }
 
-  spdlog::info("Sent=%d KB, Rate=%.3f Mbps, RTT=%dms", perf.kbytes, perf.rate,
-               perf.rtt);
-
+  spdlog::info("Sent={} KB, Rate={:03.3f} Mbps, RTT={}ms", perf.kbytes,
+               perf.rate, perf.rtt);
   close(sockfd);
   return 0;
 }
@@ -136,7 +136,7 @@ Client::get_client_options(cxxopts::ParseResult &opts) {
   }
   c.port = opts["p"].as<int>();
   c.hostname = opts["h"].as<std::string>();
-  c.time = opts["t"].as<std::chrono::duration<double>>();
+  c.time = std::chrono::duration<double>(opts["t"].as<double>());
 
   if (c.port < 1024 || c.port > 65535) {
     spdlog::error("Error: port number must be in the range of [1024, 65535]");

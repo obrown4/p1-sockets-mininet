@@ -24,5 +24,5 @@ private:
   void handle_connection(int clientfd);
   double measure_bandwidth(Perf &perf, int clientfd);
   int measure_rtt(int clientfd);
-  int make_server_sockaddr(sockaddr_in &addr, int port);
+  int make_server_sockaddr(sockaddr_in *addr, int port);
 };

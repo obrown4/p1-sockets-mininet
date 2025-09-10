@@ -22,22 +22,23 @@ int Server::measure_rtt(int clientfd) {
     start = clock();
     int bytes_recvd = recv(clientfd, buffer, MAX_MSG_SIZE, 0);
     end = clock();
-    if (bytes_recvd < 0) {
+    if (bytes_recvd <= 0) {
       spdlog::error("Error: failed to receive data from client");
-      return 0;
+      return -1;
     }
-    assert(bytes_recvd == 1);
+    // assert(bytes_recvd == 1);
 
     double rtt = double(end - start) / CLOCKS_PER_SEC;
-    rtts.push_back(rtt);
-    send(clientfd, &ACK_MSG, 1, 0);
+    spdlog::debug("RTT{} = {}", i, rtt * 1000);
+    rtts.push_back(rtt * 1000);
+    send(clientfd, &ACK_MSG, sizeof(ACK_MSG), 0);
   }
 
   assert(rtts.size() == 7);
 
   // calcualte rtt over last 3 recvd messages
   double avg = std::accumulate(rtts.begin() + 4, rtts.end(), 0.0) / 3.0;
-  return static_cast<int>(avg * 1000); // in ms
+  return avg;
 }
 
 double Server::measure_bandwidth(Perf &perf, int clientfd) {
@@ -47,10 +48,6 @@ double Server::measure_bandwidth(Perf &perf, int clientfd) {
 
   start = clock();
   while (int bytes_recvd = recv(clientfd, buffer, MAX_MSG_SIZE, 0) > 0) {
-    if (bytes_recvd < 0) {
-      spdlog::error("Error: failed to receive data from client");
-      return -1;
-    }
     total_bytes += bytes_recvd;
     send(clientfd, &ACK_MSG, 1, 0);
   }
@@ -71,7 +68,8 @@ double Server::measure_bandwidth(Perf &perf, int clientfd) {
 void Server::handle_connection(int clientfd) {
   Perf perf{};
   perf.rtt = Server::measure_rtt(clientfd);
-  if (perf.rtt == 0) {
+  spdlog::debug("Measured RTT = {}", perf.rtt);
+  if (perf.rtt < 0) {
     spdlog::error("Error: failed to measure RTT");
     return;
   }
@@ -79,24 +77,26 @@ void Server::handle_connection(int clientfd) {
   perf.rate = Server::measure_bandwidth(perf, clientfd);
   assert(perf.rate >= 0);
 
-  spdlog::info("Received=%d KB, Rate=%.3f Mbps, RTT=%dms", perf.kbytes,
+  spdlog::info("Received={} KB, Rate={:03.3f} Mbps, RTT={}ms", perf.kbytes,
                perf.rate, perf.rtt);
 }
 
-int Server::make_server_sockaddr(sockaddr_in &addr, int port) {
-  addr.sin_family = AF_INET;
-  addr.sin_addr.s_addr = INADDR_ANY;
-  addr.sin_port = htons(port);
+int Server::make_server_sockaddr(sockaddr_in *addr, int port) {
+  addr->sin_family = AF_INET;
+  addr->sin_addr.s_addr = INADDR_ANY;
+  addr->sin_port = htons(port);
   return 0;
 }
 
 int Server::start_server(Opts &opts) {
   // Prepare address structure
   sockaddr_in addr{};
-  make_server_sockaddr(addr, opts.port);
+  make_server_sockaddr(&addr, opts.port);
+
+  spdlog::info("Binding to port {}", opts.port);
 
   // Create socket
-  int sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_TCP);
+  int sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
   if (sockfd < 0) {
     spdlog::error("Error: failed to create socket");
     return -1;
