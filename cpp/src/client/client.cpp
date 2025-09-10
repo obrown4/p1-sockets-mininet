@@ -1,4 +1,5 @@
 #include <chrono>
+#include <ctime>
 #include <cxxopts.hpp>
 #include <netdb.h>
 #include <numeric>
@@ -12,14 +13,9 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
-#include "../perf.h"
 #include "client.h"
 
-int MAX_MSG_SIZE = 1024 * 80; // 80KB
-char SMALL_MSG = 'M';
-char *LARGE_MSG = new char[MAX_MSG_SIZE];
-
-int measure_rtt(int clientfd) {
+int Client::measure_rtt(int clientfd) {
   clock_t start, end;
   std::vector<double> rtts;
   char buffer[MAX_MSG_SIZE];
@@ -46,32 +42,31 @@ int measure_rtt(int clientfd) {
   return static_cast<int>(avg * 1000); // in ms
 }
 
-double measure_bandwidth(Perf &perf, int clientfd) {
-  // clock_t start, end;
-  // int total_bytes = 0;
-  // char buffer[MAX_MSG_SIZE];
+double Client::measure_bandwidth(Perf &perf, Opts &opts, int clientfd) {
+  int bytes_sent = 0;
+  char buffer[MAX_MSG_SIZE];
+  std::string LARGE_MSG(MAX_MSG_SIZE, '\0');
 
-  // start = clock();
-  // while (int bytes_recvd = recv(clientfd, buffer, MAX_MSG_SIZE, 0) > 0) {
-  //   if (bytes_recvd < 0) {
-  //     spdlog::error("Error: failed to receive data from client");
-  //     return -1;
-  //   }
-  //   total_bytes += bytes_recvd;
-  //   send(clientfd, &ACK_MSG, 1, 0);
-  // }
-  // end = clock();
-  // perf.kbytes = total_bytes / 1000;
+  clock_t start = clock();
+  while (double(clock() - start) / CLOCKS_PER_SEC < opts.time.count()) {
+    bytes_sent += send(clientfd, LARGE_MSG.c_str(), MAX_MSG_SIZE, 0);
+    int bytes_recvd = recv(clientfd, buffer, MAX_MSG_SIZE, 0);
+    if (bytes_recvd < 0) {
+      spdlog::error("Error: failed to receive data from server");
+      return -1;
+    }
+  }
 
-  // // convert to Mb and sec -> Mbps
-  // int mb_recvd = total_bytes / (1000 * 1000);
-  // int rtt_in_sec = perf.rtt / 1000;
+  perf.kbytes = bytes_sent / 1000;
 
-  // double total_time = double(end - start) / CLOCKS_PER_SEC; // in ms
-  // double transmission_delay = total_time - rtt_in_sec;
+  // convert to Mb and sec -> Mbps
+  int mb_sent = bytes_sent / (1000 * 1000);
+  int rtt_in_sec = perf.rtt / 1000;
 
-  // double bandwidth = mb_recvd / transmission_delay; // in Mbps
-  // return bandwidth;
+  double transmission_delay = opts.time.count() - rtt_in_sec;
+
+  double bandwidth = mb_sent / transmission_delay; // in Mbps
+  return bandwidth;
 }
 
 int make_client_sockaddr(sockaddr_in &addr, const std::string &hostname,
@@ -87,10 +82,10 @@ int make_client_sockaddr(sockaddr_in &addr, const std::string &hostname,
   return 0;
 }
 
-int start_client(Client &client) {
+int Client::start_client(Opts &opts) {
   // Prepare address structure
   sockaddr_in addr{};
-  if (make_client_sockaddr(addr, client.hostname, client.port) == -1) {
+  if (make_client_sockaddr(addr, opts.hostname, opts.port) == -1) {
     return -1;
   }
 
@@ -102,13 +97,13 @@ int start_client(Client &client) {
   }
 
   if (connect(sockfd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
-    spdlog::error("Error: failed to connect to server {}:{}", client.hostname,
-                  client.port);
+    spdlog::error("Error: failed to connect to server {}:{}", opts.hostname,
+                  opts.port);
     close(sockfd);
     return -1;
   }
 
-  spdlog::info("Connected to server %s:%d", client.hostname, client.port);
+  spdlog::info("Connected to server %s:%d", opts.hostname, opts.port);
 
   Perf perf{};
   perf.rtt = measure_rtt(sockfd);
@@ -118,11 +113,19 @@ int start_client(Client &client) {
     return -1;
   }
 
+  perf.rate = measure_bandwidth(perf, opts, sockfd);
+  if (perf.rate == -1) {
+    close(sockfd);
+    return -1;
+  }
+
+  close(sockfd);
   return 0;
 }
 
-std::optional<Client> get_client_options(cxxopts::ParseResult &opts) {
-  Client c;
+std::optional<Client::Opts>
+Client::get_client_options(cxxopts::ParseResult &opts) {
+  Opts c;
   if (!opts.contains("p") || !opts.contains("h") || !opts.contains("t")) {
     spdlog::error("Error: client mode requires a port number (-p), hostname "
                   "(-h), and time (-t)");

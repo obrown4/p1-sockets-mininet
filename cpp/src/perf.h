@@ -1,3 +1,4 @@
+#pragma once
 struct Perf {
   int kbytes;  // in Kb
   double rate; // in Mbps

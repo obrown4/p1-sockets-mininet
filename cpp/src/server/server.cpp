@@ -10,13 +10,9 @@
 #include <sys/types.h>
 #include <time.h>
 
-#include "../perf.h"
 #include "server.h"
 
-int MAX_MSG_SIZE = 1024 * 80; // 80KB
-char ACK_MSG = 'A';
-
-int measure_rtt(int clientfd) {
+int Server::measure_rtt(int clientfd) {
   clock_t start, end;
   std::vector<double> rtts;
   char buffer[MAX_MSG_SIZE];
@@ -44,7 +40,7 @@ int measure_rtt(int clientfd) {
   return static_cast<int>(avg * 1000); // in ms
 }
 
-double measure_bandwidth(Perf &perf, int clientfd) {
+double Server::measure_bandwidth(Perf &perf, int clientfd) {
   clock_t start, end;
   int total_bytes = 0;
   char buffer[MAX_MSG_SIZE];
@@ -72,32 +68,32 @@ double measure_bandwidth(Perf &perf, int clientfd) {
   return bandwidth;
 }
 
-void handle_connection(int clientfd) {
+void Server::handle_connection(int clientfd) {
   Perf perf{};
-  perf.rtt = measure_rtt(clientfd);
+  perf.rtt = Server::measure_rtt(clientfd);
   if (perf.rtt == 0) {
     spdlog::error("Error: failed to measure RTT");
     return;
   }
 
-  perf.rate = measure_bandwidth(perf, clientfd);
+  perf.rate = Server::measure_bandwidth(perf, clientfd);
   assert(perf.rate >= 0);
 
   spdlog::info("Received=%d KB, Rate=%.3f Mbps, RTT=%dms", perf.kbytes,
                perf.rate, perf.rtt);
 }
 
-int make_server_sockaddr(sockaddr_in &addr, int port) {
+int Server::make_server_sockaddr(sockaddr_in &addr, int port) {
   addr.sin_family = AF_INET;
   addr.sin_addr.s_addr = INADDR_ANY;
   addr.sin_port = htons(port);
   return 0;
 }
 
-int start_server(Server &server) {
+int Server::start_server(Opts &opts) {
   // Prepare address structure
   sockaddr_in addr{};
-  make_server_sockaddr(addr, server.port);
+  make_server_sockaddr(addr, opts.port);
 
   // Create socket
   int sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_TCP);
@@ -108,13 +104,13 @@ int start_server(Server &server) {
 
   // bind socket
   if (bind(sockfd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-    spdlog::error("Error: failed to bind socket to port %d", server.port);
+    spdlog::error("Error: failed to bind socket to port %d", opts.port);
     close(sockfd);
     return -1;
   }
 
   spdlog::info("iPerfer server started");
-  spdlog::info("Listening on port %d", server.port);
+  spdlog::info("Listening on port %d", opts.port);
 
   if (listen(sockfd, 5)) {
     spdlog::error("Error: failed to listen on socket");
@@ -135,18 +131,19 @@ int start_server(Server &server) {
   }
 }
 
-std::optional<Server> get_server_options(cxxopts::ParseResult &opts) {
-  Server s;
+std::optional<Server::Opts>
+Server::get_server_options(cxxopts::ParseResult &opts) {
+  Server::Opts server_opts;
   if (!opts.contains("p")) {
     spdlog::error("Error: server mode requires a port number (-p)");
     return std::nullopt;
   }
-  s.port = opts["p"].as<int>();
+  server_opts.port = opts["p"].as<int>();
 
-  if (s.port < 1024 || s.port > 65535) {
+  if (server_opts.port < 1024 || server_opts.port > 65535) {
     spdlog::error("Error: port number must be in the range of [1024, 65535]");
     return std::nullopt;
   }
 
-  return s;
+  return server_opts;
 }

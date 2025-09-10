@@ -34,19 +34,21 @@ int main(int argc, char *argv[]) {
   }
 
   if (isServer) {
-    auto s = get_server_options(result);
-    if (!s) {
+    Server s;
+    auto opts = s.get_server_options(result);
+    if (!opts) {
       return 1;
     }
-    if (start_server(*s) == 1) {
+    if (s.start_server(*opts) == 1) {
       return 1;
     }
   } else {
-    auto c = get_client_options(result);
-    if (!c) {
+    Client c;
+    auto opts = c.get_client_options(result);
+    if (!opts) {
       return 1;
     }
-    if (start_client(*c) == 1) {
+    if (c.start_client(*opts) == 1) {
       return 1;
     }
   }
