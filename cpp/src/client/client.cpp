@@ -16,59 +16,68 @@
 #include "client.h"
 
 int Client::measure_rtt(int clientfd) {
-  clock_t start, end;
   std::vector<double> rtts;
   char buffer[MAX_MSG_SIZE];
 
-  // rtt calculations for 8 messages
   for (int i = 0; i < 8; ++i) {
-    start = clock();
-    send(clientfd, &SMALL_MSG, sizeof(SMALL_MSG), 0);
-    int bytes_recvd = recv(clientfd, buffer, MAX_MSG_SIZE, 0);
-    if (bytes_recvd < 0) {
-      spdlog::error("Error: failed to receive data from server");
-      return 0;
-    }
-    // assert(bytes_recvd == 1);
-    end = clock();
-    double rtt = double(end - start) / CLOCKS_PER_SEC;
-    rtts.push_back(rtt);
-  }
-
-  assert(rtts.size() == 8);
-
-  // calcualte rtt over last 4 recvd messages
-  double avg = std::accumulate(rtts.begin() + 3, rtts.end(), 0.0) / 3.0;
-  return static_cast<int>(avg * 1000); // in ms
-}
-
-double Client::measure_bandwidth(Perf &perf, Opts &opts, int clientfd) {
-  size_t bytes_sent = 0;
-  char buffer[MAX_MSG_SIZE];
-  std::string LARGE_MSG(MAX_MSG_SIZE, '\0');
-
-  clock_t start = clock();
-  while (double(clock() - start) / CLOCKS_PER_SEC < opts.time.count()) {
-    int sent = send(clientfd, LARGE_MSG.c_str(), MAX_MSG_SIZE, 0);
-    if (sent < 0) {
+    auto start = std::chrono::high_resolution_clock::now();
+    int bytes_sent = send(clientfd, &SMALL_MSG, 1, 0);
+    if (bytes_sent < 0) {
       spdlog::error("Error: failed to send data to server");
       return -1;
     }
-    bytes_sent += sent;
+    assert(bytes_sent == sizeof(SMALL_MSG));
 
-    int bytes_recvd = recv(clientfd, buffer, MAX_MSG_SIZE, 0);
-    if (bytes_recvd < 0) {
+    // recv ack
+    int recvd = recv(clientfd, buffer, 1, 0);
+    if (recvd < 0) {
       spdlog::error("Error: failed to receive data from server");
       return -1;
     }
+
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> rtt = end - start;
+    spdlog::debug("RTT{}:{}", i, rtt.count() * 1000);
+    rtts.push_back(rtt.count() * 1000);
   }
 
-  assert(bytes_sent > 0);
-  perf.kbytes = bytes_sent / 1000;
-  assert(perf.kbytes > 0);
+  // calcualte rtt over last 4 recvd messages
+  double avg = std::accumulate(rtts.begin() + 3, rtts.end(), 0.0) / 4.0;
+  return avg;
+}
+
+double Client::measure_bandwidth(Perf &perf, Opts &opts, int clientfd) {
+  size_t total_bytes_sent = 0;
+  char buffer[MAX_MSG_SIZE];
+  std::string LARGE_MSG(MAX_MSG_SIZE, '\0');
+
+  auto start = std::chrono::high_resolution_clock::now();
+  auto end = start + opts.time;
+
+  while (start < end) {
+    ssize_t bytes_sent = 0;
+    do {
+      bytes_sent += send(clientfd, LARGE_MSG.data() + bytes_sent,
+                         LARGE_MSG.size() - bytes_sent, 0);
+      if (bytes_sent < 0) {
+        spdlog::error("Error: failed to send data to server");
+        return -1;
+      }
+    } while (bytes_sent < LARGE_MSG.size());
+    total_bytes_sent += bytes_sent;
+
+    int recvd = recv(clientfd, buffer, 1, 0);
+    if (recvd < 0) {
+      spdlog::error("Error: failed to receive data from server");
+      return -1;
+    }
+    start = std::chrono::high_resolution_clock::now();
+  }
+
+  perf.kbytes = total_bytes_sent / 1000;
 
   // convert to Mb and sec -> Mbps
-  double mb_sent = static_cast<double>(bytes_sent) / (1000 * 1000);
+  double mb_sent = static_cast<double>(total_bytes_sent) / (1000 * 1000);
   int rtt_in_sec = perf.rtt / 1000;
 
   double transmission_delay = opts.time.count() - rtt_in_sec;
