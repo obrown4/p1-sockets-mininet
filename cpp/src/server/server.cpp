@@ -99,7 +99,7 @@ double Server::measure_bandwidth(Perf &perf, int clientfd)
   perf.kbytes = total_bytes / 1000;
 
   // convert to Mb and sec -> Mbps
-  double mb_recvd = static_cast<double>(total_bytes) / (1000 * 1000);
+  double mb_recvd = (static_cast<double>(total_bytes) * 8.0) / (1000 * 1000);
   assert(mb_recvd > 0);
 
   int rtt_in_sec = perf.rtt / 1000;
