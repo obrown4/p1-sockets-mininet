@@ -66,6 +66,7 @@ double Server::measure_bandwidth(Perf &perf, int clientfd)
 
   bool open = true;
   auto start = std::chrono::high_resolution_clock::now();
+  double propogation = 0.0;
 
   while (open)
   {
@@ -92,6 +93,7 @@ double Server::measure_bandwidth(Perf &perf, int clientfd)
     {
       total_bytes += bytes_recvd;
       send(clientfd, &ACK_MSG, sizeof(ACK_MSG), 0);
+      ++propogation;
     }
   }
   auto end = std::chrono::high_resolution_clock::now();
@@ -107,7 +109,7 @@ double Server::measure_bandwidth(Perf &perf, int clientfd)
   std::chrono::duration<double> elapsed = end - start;
   assert(elapsed.count() > 0);
 
-  double transmission_delay = elapsed.count() - rtt_in_sec;
+  double transmission_delay = elapsed.count() - (rtt_in_sec * propogation);
 
   double bandwidth = mb_recvd / transmission_delay; // in Mbps
   return bandwidth;

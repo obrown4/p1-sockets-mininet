@@ -58,6 +58,8 @@ double Client::measure_bandwidth(Perf &perf, Opts &opts, int clientfd)
   auto start = std::chrono::high_resolution_clock::now();
   auto elapsed = std::chrono::duration<double>(0);
 
+  double propogation = 0.0;
+
   while (elapsed < opts.time)
   {
     ssize_t bytes_sent = 0;
@@ -80,6 +82,7 @@ double Client::measure_bandwidth(Perf &perf, Opts &opts, int clientfd)
       spdlog::error("Error: failed to receive data from server");
       return -1;
     }
+    ++propogation;
 
     elapsed = std::chrono::high_resolution_clock::now() - start;
   }
@@ -90,7 +93,7 @@ double Client::measure_bandwidth(Perf &perf, Opts &opts, int clientfd)
   double mb_sent = (static_cast<double>(total_bytes_sent) * 8.0) / (1000 * 1000);
   int rtt_in_sec = perf.rtt / 1000;
 
-  double transmission_delay = elapsed.count() - rtt_in_sec;
+  double transmission_delay = elapsed.count() - (rtt_in_sec * propogation);
 
   double bandwidth = mb_sent / transmission_delay; // in Mbps
   return bandwidth;
