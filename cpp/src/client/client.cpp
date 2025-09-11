@@ -62,13 +62,14 @@ double Client::measure_bandwidth(Perf &perf, Opts &opts, int clientfd)
     ssize_t bytes_sent = 0;
     do
     {
-      bytes_sent += send(clientfd, LARGE_MSG.data() + bytes_sent,
-                         LARGE_MSG.size() - bytes_sent, 0);
-      if (bytes_sent < 0)
+      int chunk = send(clientfd, LARGE_MSG.data() + bytes_sent,
+                       LARGE_MSG.size() - bytes_sent, 0);
+      if (chunk < 0)
       {
         spdlog::error("Error: failed to send data to server");
         return -1;
       }
+      bytes_sent += chunk;
     } while (bytes_sent < LARGE_MSG.size());
     total_bytes_sent += bytes_sent;
 
