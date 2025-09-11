@@ -13,63 +13,83 @@
 
 #include "server.h"
 
-int Server::measure_rtt(int clientfd) {
+int Server::measure_rtt(int clientfd)
+{
   std::vector<double> rtts;
   char buffer[MAX_MSG_SIZE];
 
-  int rec = recv(clientfd, buffer, 1, 0); // warm up
-
-  assert(rec > 0);
+  if (recv(clientfd, buffer, 1, 0) < 0)
+  {
+    spdlog::error("Error: failed to receive data from client");
+    return -1;
+  }
 
   // rtt calculations for 7 messages
-  for (int i = 0; i < 7; ++i) {
+  for (int i = 0; i < 7; ++i)
+  {
     auto start = std::chrono::high_resolution_clock::now();
-    send(clientfd, &ACK_MSG, sizeof(ACK_MSG), 0);
+    if (send(clientfd, &ACK_MSG, sizeof(ACK_MSG), 0) < 0)
+    {
+      spdlog::error("Error: failed to send data to client");
+      return -1;
+    }
+
     int bytes_recvd = recv(clientfd, buffer, 1, 0);
-    if (bytes_recvd <= 0) {
+    if (bytes_recvd <= 0)
+    {
       spdlog::error("Error: failed to receive data from client");
       return -1;
     }
     auto end = std::chrono::high_resolution_clock::now();
 
+    // take measurement
     std::chrono::duration<double> rtt = end - start;
     spdlog::debug("RTT{}: {}", i, rtt.count() * 1000);
     rtts.push_back(rtt.count() * 1000); // one way
   }
 
-  assert(rtts.size() == 7);
-  send(clientfd, &ACK_MSG, sizeof(ACK_MSG), 0);
+  if (send(clientfd, &ACK_MSG, sizeof(ACK_MSG), 0) < 0)
+  {
+    spdlog::error("Error: failed to send data to client");
+    return -1;
+  }
 
   // calcualte rtt over last 3 recvd messages
   double avg = std::accumulate(rtts.begin() + 4, rtts.end(), 0.0) / 3.0;
   return avg;
 }
 
-double Server::measure_bandwidth(Perf &perf, int clientfd) {
+double Server::measure_bandwidth(Perf &perf, int clientfd)
+{
   size_t total_bytes = 0;
   char buffer[MAX_MSG_SIZE];
 
   bool open = true;
-
   auto start = std::chrono::high_resolution_clock::now();
-  while (open) {
+
+  while (open)
+  {
     size_t bytes_recvd = 0;
-    do {
+    do
+    {
       int msg =
           recv(clientfd, buffer + bytes_recvd, MAX_MSG_SIZE - bytes_recvd, 0);
-      if (msg < 0) {
+      if (msg < 0)
+      {
         spdlog::error("Error: failed to receive data from client");
         return -1;
       }
-      if (msg == 0) {
+      if (msg == 0)
+      {
         open = false;
         break;
       }
 
       bytes_recvd += msg;
-    } while (bytes_recvd < MAX_MSG_SIZE && bytes_recvd > 0);
+    } while (bytes_recvd < MAX_MSG_SIZE);
 
-    if (bytes_recvd > 0) {
+    if (bytes_recvd > 0)
+    {
       total_bytes += bytes_recvd;
       send(clientfd, &ACK_MSG, sizeof(ACK_MSG), 0);
     }
@@ -93,11 +113,13 @@ double Server::measure_bandwidth(Perf &perf, int clientfd) {
   return bandwidth;
 }
 
-void Server::handle_connection(int clientfd) {
+void Server::handle_connection(int clientfd)
+{
   Perf perf{};
   perf.rtt = Server::measure_rtt(clientfd);
   spdlog::debug("Measured RTT = {}ms", perf.rtt);
-  if (perf.rtt < 0) {
+  if (perf.rtt < 0)
+  {
     spdlog::error("Error: failed to measure RTT");
     return;
   }
@@ -109,14 +131,16 @@ void Server::handle_connection(int clientfd) {
                perf.rate, perf.rtt);
 }
 
-int Server::make_server_sockaddr(sockaddr_in *addr, int port) {
+int Server::make_server_sockaddr(sockaddr_in *addr, int port)
+{
   addr->sin_family = AF_INET;
   addr->sin_addr.s_addr = INADDR_ANY;
   addr->sin_port = htons(port);
   return 0;
 }
 
-int Server::start_server(Opts &opts) {
+int Server::start_server(Opts &opts)
+{
   // Prepare address structure
   sockaddr_in addr{};
   make_server_sockaddr(&addr, opts.port);
@@ -125,13 +149,15 @@ int Server::start_server(Opts &opts) {
 
   // Create socket
   int sockfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-  if (sockfd < 0) {
+  if (sockfd < 0)
+  {
     spdlog::error("Error: failed to create socket");
     return -1;
   }
 
   // bind socket
-  if (bind(sockfd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+  if (bind(sockfd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
+  {
     spdlog::error("Error: failed to bind socket to port %d", opts.port);
     close(sockfd);
     return -1;
@@ -140,35 +166,39 @@ int Server::start_server(Opts &opts) {
   spdlog::info("iPerfer server started");
   spdlog::debug("Listening on port %d", opts.port);
 
-  if (listen(sockfd, 5)) {
+  if (listen(sockfd, 5))
+  {
     spdlog::error("Error: failed to listen on socket");
     close(sockfd);
     return -1;
   }
 
   // accept incoming connections
-  while (true) {
-    int clientfd = accept(sockfd, nullptr, nullptr);
-    if (clientfd < 0) {
-      spdlog::error("Error: failed to accept incoming connection");
-      continue;
-    }
-    spdlog::info("Client connected");
-    handle_connection(clientfd);
-    close(clientfd);
+  int clientfd = accept(sockfd, nullptr, nullptr);
+  if (clientfd < 0)
+  {
+    spdlog::error("Error: failed to accept incoming connection");
+    return -1;
   }
+  spdlog::info("Client connected");
+  handle_connection(clientfd);
+  close(sockfd);
+  return 0;
 }
 
 std::optional<Server::Opts>
-Server::get_server_options(cxxopts::ParseResult &opts) {
+Server::get_server_options(cxxopts::ParseResult &opts)
+{
   Server::Opts server_opts;
-  if (!opts.contains("p")) {
+  if (!opts.contains("p"))
+  {
     spdlog::error("Error: server mode requires a port number (-p)");
     return std::nullopt;
   }
   server_opts.port = opts["p"].as<int>();
 
-  if (server_opts.port < 1024 || server_opts.port > 65535) {
+  if (server_opts.port < 1024 || server_opts.port > 65535)
+  {
     spdlog::error("Error: port number must be in the range of [1024, 65535]");
     return std::nullopt;
   }
